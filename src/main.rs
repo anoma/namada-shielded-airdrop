@@ -1,5 +1,5 @@
 use ff::Field;
-use jubjub::ExtendedPoint;
+use jubjub::SubgroupPoint;
 use jubjub::Fr as Fr;
 use masp_primitives::asset_type::AssetType;
 
@@ -33,21 +33,26 @@ fn main() {
     let rcv_convert = Fr::random(rng_convert);
     let rcv_NAM = Fr::random(rng_masp);
     let rcv_sapling = Fr::random(rng_sap);
+    let value_sapling = 1;
+    let value_NAM = 1;
+    let value_mint = 1;
 
-    let cv_sapling = sapling_spend::spend(rcv_sapling).convert_to_masp_vc().commitment();
-    let cv_NAM = MASP_output::output(rcv_NAM).commitment();
-    let cv_mint = MASP_output::convert(rcv_convert).commitment();
+    let cv_sapling = sapling_spend::spend(rcv_sapling, value_sapling).convert_to_masp_vc().commitment();
+    let cv_NAM_wrap = MASP_output::output(rcv_NAM, value_NAM);
+    let cv_NAM = cv_NAM_wrap.commitment();
+    let cv_mint = MASP_output::convert(rcv_convert, value_mint).commitment();
 
     // Calculate Randomness renormailzation factor
     let N = (R_MASP)*rcv_sapling - (R_Sapling)*rcv_sapling;
-    let bvk = cv_sapling + cv_mint - cv_NAM + N;
-    //println!("{:?}", bvk);
-
+    let bvk = (cv_sapling + cv_mint - cv_NAM + N);
+    let vb_nam = cv_NAM_wrap.asset_generator;
     // Calucalte bvk from rcv values
-    let vb_nam = AssetType::new(b"NAM").unwrap().asset_generator();
+    let bvk_2 = vb_nam*Fr::zero() + vb_Sapling*Fr::zero() + R_MASP*(-rcv_NAM+rcv_convert+rcv_sapling) ;
+    let bvk_3 = vb_nam*Fr::zero() + vb_Sapling*Fr::zero() + R_MASP*(-rcv_NAM+rcv_convert+rcv_sapling) +  R_Sapling*(Fr::zero());
 
-    let bvk_2 = vb_nam*Fr::zero() + vb_Sapling*Fr::zero() + R_MASP*(-rcv_NAM+rcv_convert+rcv_sapling);
     // Todo:
     // bvk_2 is currently not matching with bvk.
+    println!("{:?}", bvk_2);
+    println!("{:?}", bvk_3);
 
 }

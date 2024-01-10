@@ -13,12 +13,11 @@ use sapling::{
 use rand_xorshift::XorShiftRng;
 
 
-pub(crate) fn spend (rcv_sapling: jubjub::Fr) -> ValueCommitmentOpening {
-    let value_commitment = ValueCommitmentOpening {
-        value: NoteValue::from_raw(1),
+pub(crate) fn spend (rcv_sapling: jubjub::Fr, value: u64) -> ValueCommitmentOpening {
+    ValueCommitmentOpening {
+        value: NoteValue::from_raw(value),
         randomness: rcv_sapling,
-    };
-    value_commitment
+    }
 }
 // Define a trait for the conversion
 pub trait ConvertToValueCommitment {
