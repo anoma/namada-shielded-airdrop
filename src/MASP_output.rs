@@ -14,10 +14,8 @@ use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use sapling::value::ValueCommitment as OtherValueCommitment;
 
-pub(crate) fn output(rcv_NAM: jubjub::Fr, value: u64) -> ValueCommitment {
-    AssetType::new(b"NAM")
-        .unwrap()
-        .value_commitment(value,rcv_NAM)
+pub(crate) fn output(rcv_NAM: jubjub::Fr, value: u64) -> AssetType {
+    AssetType::new(b"NAM").unwrap()
 }
 
 pub(crate) fn convert(rcv_convert: jubjub::Fr, value: u64, V_NAM :u64, V_SAP: u64) -> ValueCommitment {

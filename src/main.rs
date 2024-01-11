@@ -4,7 +4,6 @@ use group::cofactor::CofactorGroup;
 use jubjub::SubgroupPoint;
 use jubjub::Fr as Fr;
 use jubjub::Fq as Fq;
-
 use masp_primitives::asset_type::AssetType;
 
 use masp_primitives::convert::AllowedConversion;
@@ -37,28 +36,23 @@ fn main() {
     let rcv_convert = Fr::random(rng_convert);
     let rcv_NAM = Fr::random(rng_masp);
     let rcv_sapling = Fr::random(rng_sap);
-    let value_sapling = 10;
-    let value_NAM = 10;
-    let value_mint = 10;
+    let value_sapling = 1;
+    let value_NAM = 1;
+    let value_mint = 1;
     let V_NAM: u64 = 1;
     let V_SAP: u64 = 1;
 
     let cv_sapling = sapling_spend::spend(rcv_sapling, value_sapling).convert_to_masp_vc().commitment();
-    let cv_NAM_wrap = MASP_output::output(rcv_NAM, value_NAM);
-    let cv_NAM = cv_NAM_wrap.commitment();
+    let nam_type = MASP_output::output(rcv_NAM, value_NAM);
+    let cv_NAM = nam_type.value_commitment(value_NAM, rcv_NAM).commitment();
+    let vb_nam = nam_type.value_commitment_generator();
     let cv_mint = MASP_output::convert(rcv_convert, value_mint, V_NAM, V_SAP).commitment();
 
     // Calculate Randomness renormailzation factor
-    let N = R_MASP*rcv_sapling - R_Sapling*rcv_sapling;
-    let bvk = cv_sapling + cv_mint - cv_NAM + N;
-    let vb_nam = cv_NAM_wrap.asset_generator.into_subgroup().unwrap();
-    // Calucalte bvk from rcv values
-    let bvk_2  = vb_nam*Fr::from(value_sapling -value_mint*V_SAP) + vb_Sapling*Fr::from(value_mint*V_NAM-value_NAM) + R_MASP*(-rcv_NAM+rcv_convert+rcv_sapling) ;
+    let N:SubgroupPoint = (R_MASP)*rcv_sapling - (R_Sapling)*rcv_sapling;
+    let bvk:SubgroupPoint  = (cv_sapling + cv_mint - cv_NAM + N);
 
-    // Todo:
-    // bvk_2 is currently not matching with bvk.
-    //println!("{:?}", bvk_2);
-    //println!("{:?}", bvk_3);
-    assert_eq!(vb_Sapling, vb_Sapling * Fr::one());
+    let bvk_2:SubgroupPoint  = vb_nam*Fr::from(value_sapling -value_mint*V_SAP) + vb_Sapling*Fr::from(value_mint*V_NAM-value_NAM) + R_MASP*(-rcv_NAM+rcv_convert+rcv_sapling);
+    assert_eq!(bvk_2, bvk);
 
 }
