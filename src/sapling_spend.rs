@@ -1,7 +1,7 @@
 use bellman::groth16::*;
 use bls12_381::Bls12;
 use group::ff::Field;
-use jubjub::{ExtendedPoint, Fr};
+use jubjub::{ExtendedPoint, Fr, SubgroupPoint};
 use masp_primitives::sapling::ValueCommitment;
 use rand::{Rng, RngCore, SeedableRng};
 use sapling::{
@@ -13,11 +13,8 @@ use sapling::{
 use rand_xorshift::XorShiftRng;
 
 
-pub(crate) fn spend (rcv_sapling: jubjub::Fr, value: u64) -> ValueCommitmentOpening {
-    ValueCommitmentOpening {
-        value: NoteValue::from_raw(value),
-        randomness: rcv_sapling,
-    }
+pub(crate) fn sapling_commitment (rcv_sapling: jubjub::Fr, value: u64) -> SubgroupPoint {
+    sapling::constants::VALUE_COMMITMENT_VALUE_GENERATOR* jubjub::Fr::from(value) + sapling::constants::VALUE_COMMITMENT_RANDOMNESS_GENERATOR * rcv_sapling
 }
 // Define a trait for the conversion
 pub trait ConvertToValueCommitment {
