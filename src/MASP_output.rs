@@ -8,7 +8,9 @@ use masp_primitives::{
     asset_type::AssetType,
     sapling::{Diversifier, ProofGenerationKey},
 };
+use masp_primitives::convert::AllowedConversion;
 use masp_primitives::sapling::ValueCommitment;
+use masp_proofs::circuit::convert::Convert;
 use masp_proofs::circuit::sapling::Spend;
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;

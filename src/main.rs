@@ -20,6 +20,8 @@ use sapling::constants::VALUE_COMMITMENT_VALUE_GENERATOR as vb_Sapling;
 
 mod sapling_spend;
 mod MASP_output;
+mod builder;
+mod verifier;
 
 fn main() {
     let mut rng_sap = XorShiftRng::from_seed([
@@ -53,14 +55,15 @@ fn main() {
     // cofactor check
     assert_eq!(cv_NAM, vb_nam * jubjub::Fr::from(value_NAM) + R_MASP * rcv_NAM);
     assert_eq!(cv_sapling, vb_Sapling * jubjub::Fr::from(value_sapling) + R_Sapling * rcv_sapling);
-    assert_eq!(cv_mint, (vb_nam*jubjub::Fr::from(V_NAM) - vb_Sapling.double().double().double()*(jubjub::Fr::from(V_SAP)))*jubjub::Fr::from(value_mint*8) + R_MASP * rcv_convert);
+    assert_eq!(cv_mint, ( vb_nam*jubjub::Fr::from(V_NAM) - vb_Sapling.double().double().double()*(jubjub::Fr::from(V_SAP)))*jubjub::Fr::from(value_mint*8) + R_MASP * rcv_convert);
     assert_eq!(cv_sapling.double().double().double(), vb_Sapling * jubjub::Fr::from(value_sapling*8) + R_Sapling * rcv_sapling* jubjub::Fr::from(8));
     // Calculate Randomness renormailzation factor
     let N:SubgroupPoint = (R_MASP)*rcv_sapling - (R_Sapling)*(rcv_sapling * jubjub::Fr::from(8));
     let bvk:SubgroupPoint  = cv_sapling.double().double().double()+ cv_mint - cv_NAM + N;
-
-    let bvk_2:SubgroupPoint  = vb_nam * Fr::from(8*value_mint*V_NAM-value_NAM)+
-                               vb_Sapling*Fr::from(value_sapling-8*value_mint*V_SAP) +
+    let sap_balance = Fr::from(8*value_mint*V_NAM) + Fr::neg(&Fr::from(value_NAM));
+    let nam_balance = Fr::from(value_sapling) + Fr::neg(&Fr::from(8*value_mint*V_SAP));
+    let bvk_2:SubgroupPoint  = vb_nam * sap_balance+
+                               vb_Sapling*nam_balance +
                                R_MASP*(rcv_convert+rcv_sapling-rcv_NAM);
 
     assert_eq!(bvk_2, bvk);
