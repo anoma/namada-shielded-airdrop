@@ -6,10 +6,11 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-masp_primitives = { git = "https://github.com/anoma/masp", tag = "v1.0.0" }
-masp_proofs = { git = "https://github.com/anoma/masp", tag = "v1.0.0", default-features = false, features = ["local-prover"] }
-masp_note_encryption =  { git = "https://github.com/anoma/masp", tag = "v1.0.0" }
+masp_primitives = { git = "https://github.com/anoma/masp", branch = "carlo/airdrop_changes" }
+masp_proofs = { git = "https://github.com/anoma/masp", branch = "carlo/airdrop_changes", default-features = false, features = ["local-prover"] }
+masp_note_encryption =  { git = "https://github.com/anoma/masp", branch = "carlo/airdrop_changes" }
 sapling = { package = "sapling-crypto", git = "https://github.com/zcash/sapling-crypto.git", rev = "71711b9e4b775a625318070e0f56b7b652f12306" }
+borsh = {version = "1.2.0", features = ["unstable__schema", "derive"]}
 
 ff = "0.13"
 group = { version = "0.13", features = ["wnaf-memuse"] }

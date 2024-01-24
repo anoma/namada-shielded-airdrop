@@ -1,4 +1,5 @@
 use core::fmt::Debug;
+use std::io::Write;
 use std::iter;
 use std::sync::mpsc::Sender;
 use bls12_381::Bls12;
@@ -15,6 +16,7 @@ use masp_primitives::consensus::BlockHeight;
 use masp_primitives::transaction::components::sapling::builder::{ConvertDescriptionInfo, SaplingMetadata, Unauthorized};
 use masp_primitives::transaction::components::sapling::builder::SaplingBuilder;
 use masp_primitives::transaction::components::sapling::builder::SaplingOutputInfo;
+use masp_primitives::transaction::components::sapling::Authorization as MaspAuth;
 use masp_primitives::sapling::util::generate_random_rseed;
 use masp_primitives::transaction::components::sapling::builder::SpendDescriptionInfo;
 use masp_primitives::transaction::components::amount::ValueSum;
@@ -22,6 +24,7 @@ use masp_primitives::transaction::components::{ConvertDescription, I128Sum, Outp
 use masp_primitives::asset_type::AssetType;
 use masp_primitives::keys::OutgoingViewingKey;
 use masp_primitives::memo::MemoBytes;
+use masp_primitives::sapling::note_encryption::sapling_note_encryption;
 use masp_primitives::sapling::PaymentAddress;
 use masp_primitives::sapling::prover::TxProver;
 use masp_primitives::transaction::builder::Progress;
@@ -101,7 +104,7 @@ pub struct AirdropBuilder<P, A: Authorization> {
     convert_anchor: Option<bls12_381::Scalar>,
     spends: Vec<SpendDescription<A>>,
     converts: Vec<ConvertDescriptionInfo>,
-    outputs: Vec<SaplingOutputInfo>,
+    outputs: Vec<OutputDescription<GrothProofBytes>>,
 }
 
 impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
@@ -112,7 +115,7 @@ impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
             params,
             spend_anchor: anchor,
             target_height,
-            value_balance: Fr::random(0),
+            value_balance: ExtendedPoint::identity(),
             convert_anchor: None,
             spends: vec![],
             converts: vec![],
@@ -128,20 +131,21 @@ impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
         zkproof: A::SpendProof,
         spend_auth_sig: A::AuthSig,
     )-> Result<(), Error> {
-        let spend_description = sapling::bundle::SpendDescription::from_parts(
-            cv: ValueCommitment,
-            anchor: bls12_381::Scalar,
-            nullifier: Nullifier,
-            rk: redjubjub::VerificationKey<SpendAuth>,
-            zkproof: A::SpendProof,
-            spend_auth_sig: A::AuthSig,
+        let spend_description = SpendDescription::from_parts(
+            cv,
+            anchor,
+            nullifier,
+            rk,
+            zkproof,
+            spend_auth_sig,
         );
         self.spends.push(spend_description);
-        self.value_balance += cv.as_inner().double().double().double();
+        let cv_sap: ExtendedPoint = cv.as_inner().double().double().double();
+        self.value_balance += cv_sap;
         Ok(())
     }
 
-    pub fn add_output<R: RngCore+ rand_core::CryptoRng>(
+    pub fn add_output_description<Pr: TxProver, R: RngCore+ rand_core::CryptoRng>(
         &mut self,
         mut rng: R,
         ovk: Option<OutgoingViewingKey>,
@@ -149,6 +153,8 @@ impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
         asset_type: AssetType,
         value: u64,
         memo: MemoBytes,
+        prover: &Pr,
+        ctx: &mut Pr::SaplingProvingContext,
     ) -> Result<(), Error> {
         let g_d = to.g_d().ok_or(Error::InvalidAddress)?;
         if value > MAX_MONEY {
@@ -163,15 +169,40 @@ impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
             rseed,
             asset_type,
         };
-        let output = SaplingOutputInfo::new(ovk, to, note, memo);
-        self.value_balance -=
-            ValueSum::from_pair(asset_type, value.into()).map_err(|_| Error::InvalidAmount)?;
+        let encryptor = sapling_note_encryption::<P>(ovk, note, to, memo);
 
-        self.outputs.push(output);
+        let (zkproof, cv) = prover.output_proof(
+            ctx,
+            *encryptor.esk(),
+            to,
+            note.rcm(),
+            note.asset_type,
+            note.value,
+        );
+
+        let cmu = note.cmu();
+
+        let enc_ciphertext = encryptor.encrypt_note_plaintext();
+        let out_ciphertext = encryptor.encrypt_outgoing_plaintext(&cv, &cmu, &mut rng);
+
+        let epk = *encryptor.epk();
+
+        let output = OutputDescription {
+            cv,
+            cmu,
+            ephemeral_key: epk.to_bytes().into(),
+            enc_ciphertext,
+            out_ciphertext,
+            zkproof,
+        };
+
+        self.value_balance -= cv;
+
+        self.outputs.push(output.clone());
         Ok(())
     }
 
-    pub fn add_convert(
+    pub fn add_convert_description(
         &mut self,
         allowed: AllowedConversion,
         value: u64,
@@ -201,6 +232,7 @@ impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
         Ok(())
     }
 
+    /*
     pub fn build<Pr: TxProver, R: RngCore>(
         self,
         prover: &Pr,
@@ -394,4 +426,5 @@ impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
 
         Ok(bundle)
     }
+    */
 }
