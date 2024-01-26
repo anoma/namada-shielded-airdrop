@@ -13,13 +13,14 @@ use masp_primitives::sapling::Note;
 use masp_primitives::convert::AllowedConversion;
 use masp_primitives::consensus;
 use masp_primitives::consensus::BlockHeight;
-use masp_primitives::transaction::components::sapling::builder::{ConvertDescriptionInfo, SaplingMetadata, Unauthorized};
+use masp_primitives::transaction::components::sapling::builder::{ConvertDescriptionInfo, SaplingMetadata, Unauthorized as MASPUnauthorized};
 use masp_primitives::transaction::components::sapling::builder::SaplingBuilder;
 use masp_primitives::transaction::components::sapling::builder::SaplingOutputInfo;
-use masp_primitives::transaction::components::sapling::Authorization as MaspAuth;
+use masp_primitives::transaction::components::sapling::{Authorization as MaspAuth, MapAuth};
 use masp_primitives::sapling::util::generate_random_rseed;
 use masp_primitives::transaction::components::sapling::builder::SpendDescriptionInfo;
 use masp_primitives::transaction::components::amount::ValueSum;
+use masp_primitives::transaction::components::sapling::builder::Error as MaspErr;
 use masp_primitives::transaction::components::{ConvertDescription, I128Sum, OutputDescription};
 use masp_primitives::asset_type::AssetType;
 use masp_primitives::keys::OutgoingViewingKey;
@@ -32,13 +33,12 @@ use masp_primitives::transaction::components::sapling::{Bundle, GrothProofBytes}
 use rand::prelude::SliceRandom;
 use sapling::{zip32::ExtendedSpendingKey, Diversifier, MerklePath as SapMerklePath, Note as SapNote, builder::{Error, SpendInfo}, value::ValueSum as SapValueSum, Nullifier};
 use rand_core::RngCore;
-use sapling::builder::{Builder, OutputInfo, SigningMetadata, SigningParts};
+use sapling::builder::{Builder, OutputInfo, SigningMetadata, SigningParts, UnauthorizedBundle};
 use sapling::bundle::{Authorization, SpendDescription};
 use rand::{rngs::StdRng, SeedableRng};
 use redjubjub::SpendAuth;
 use sapling::prover::{OutputProver, SpendProver};
 use sapling::value::{ValueCommitment, ValueCommitTrapdoor};
-
 
 pub(crate) const GROTH_PROOF_SIZE: usize = 48 + 96 + 48;
 const MIN_SHIELDED_OUTPUTS: usize = 2;
@@ -95,20 +95,35 @@ impl AirdropMetadata {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct AirdropBundle<A, MA>
+    where
+        A: Authorization,
+        MA: MaspAuth + PartialEq + BorshSerialize + BorshDeserialize,
+{
+    pub shielded_spends: Vec<SpendDescription<A>>,
+    pub shielded_converts: Vec<ConvertDescription<MA::Proof>>,
+    pub shielded_outputs: Vec<OutputDescription<MA::Proof>>,
+    pub value_balance: ExtendedPoint,
+    pub authorization: A,
+}
 
-pub struct AirdropBuilder<P, A: Authorization> {
+pub struct AirdropBuilder<P, A: Authorization, MA: MaspAuth> {
     params: P,
     spend_anchor: jubjub::Base,
     target_height: BlockHeight,
     value_balance: ExtendedPoint,
     convert_anchor: Option<bls12_381::Scalar>,
     spends: Vec<SpendDescription<A>>,
-    converts: Vec<ConvertDescriptionInfo>,
-    outputs: Vec<OutputDescription<GrothProofBytes>>,
+    converts: Vec<ConvertDescription<MA::Proof>>,
+    outputs: Vec<OutputDescription<MA::Proof>>,
 }
-
-impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
-
+impl<P, A, MA> AirdropBuilder<P, A, MA>
+    where
+        P: consensus::Parameters,
+        A: Authorization + Clone,
+        MA: MaspAuth + PartialEq + BorshSerialize + BorshDeserialize
+{
     /// initialize the airdrop tool with the sapling spend commitment tree anchor
     pub fn init(params: P, target_height: BlockHeight, anchor: jubjub::Base) -> Self{
         AirdropBuilder {
@@ -131,7 +146,7 @@ impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
         zkproof: A::SpendProof,
         spend_auth_sig: A::AuthSig,
     )-> Result<(), Error> {
-        let spend_description = SpendDescription::from_parts(
+        let spend_description: SpendDescription<A> = SpendDescription::from_parts(
             cv,
             anchor,
             nullifier,
@@ -139,8 +154,8 @@ impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
             zkproof,
             spend_auth_sig,
         );
-        self.spends.push(spend_description);
-        let cv_sap: ExtendedPoint = cv.as_inner().double().double().double();
+        self.spends.push(spend_description.clone());
+        let cv_sap: ExtendedPoint = spend_description.cv().as_inner().double().double().double();
         self.value_balance += cv_sap;
         Ok(())
     }
@@ -155,10 +170,10 @@ impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
         memo: MemoBytes,
         prover: &Pr,
         ctx: &mut Pr::SaplingProvingContext,
-    ) -> Result<(), Error> {
-        let g_d = to.g_d().ok_or(Error::InvalidAddress)?;
+    ) -> Result<(), MaspErr> {
+        let g_d = to.g_d().ok_or(MaspErr::InvalidAddress)?;
         if value > MAX_MONEY {
-            return Err(Error::InvalidAmount);
+            return Err(MaspErr::InvalidAmount);
         }
         let rseed = generate_random_rseed(&self.params, self.target_height, &mut rng);
 
@@ -202,45 +217,53 @@ impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
         Ok(())
     }
 
-    pub fn add_convert_description(
+    pub fn add_convert_description<Pr: TxProver, R: RngCore+ rand_core::CryptoRng>(
         &mut self,
         allowed: AllowedConversion,
         value: u64,
         merkle_path: MerklePath<Node>,
-    ) -> Result<(), Error> {
+        prover: &Pr,
+        ctx: &mut Pr::SaplingProvingContext,
+    ) -> Result<(), MaspErr> {
         // Consistency check: all anchors must equal the first one
 
         let node = allowed.commitment();
         if let Some(anchor) = self.convert_anchor {
             let path_root: bls12_381::Scalar = merkle_path.root(node).into();
             if path_root != anchor {
-                return Err(Error::AnchorMismatch);
+                return Err(MaspErr::AnchorMismatch);
             }
         } else {
             self.convert_anchor = Some(merkle_path.root(node).into())
         }
 
-        let allowed_amt: I128Sum = allowed.clone().into();
-        self.value_balance += I128Sum::from_sum(allowed_amt) * (value as i128);
-
-        self.converts.push(ConvertDescriptionInfo::new(
-            allowed,
-            value,
-            merkle_path,
-        ));
-
+        let (zkproof, cv) = prover
+            .convert_proof(
+                ctx,
+                allowed.clone(),
+                value,
+                self.convert_anchor.unwrap(),
+                merkle_path,
+            )
+            .map_err(|_| MaspErr::ConvertProof)?;
+        let convert = ConvertDescription {
+            cv,
+            anchor: self.convert_anchor.unwrap(),
+            zkproof,
+        };
+        self.value_balance += cv;
+        self.converts.push(convert);
         Ok(())
     }
 
-    /*
-    pub fn build<Pr: TxProver, R: RngCore>(
+
+    pub fn build<Pr: TxProver, R: RngCore, V: TryFrom<i64>>(
         self,
         prover: &Pr,
         ctx: &mut Pr::SaplingProvingContext,
         mut rng: R,
         target_height: BlockHeight,
-        progress_notifier: Option<&Sender<Progress>>,
-    ) {
+    ) -> Result<Option<AirdropBundle<UnauthorizedBundle<V>, MASPUnauthorized>>, Error>{
         let value_balance = self.value_balance();
         let params = self.params;
         let mut indexed_spends: Vec<_> = self.spends.into_iter().enumerate().collect();
@@ -273,158 +296,20 @@ impl<P: consensus::Parameters, A: Authorization> AirdropBuilder<P, A> {
         indexed_converts.shuffle(&mut rng);
         indexed_outputs.shuffle(&mut rng);
 
-        // Keep track of the total number of steps computed
-        let total_progress = indexed_spends.len() as u32 + indexed_outputs.len() as u32;
-        let mut progress = 0u32;
 
-        // Create Sapling ConvertDescriptions
-        let shielded_converts: Vec<ConvertDescription<GrothProofBytes>> =
-            if !indexed_converts.is_empty() {
-                let anchor = self
-                    .convert_anchor
-                    .expect("MASP convert_anchor must be set if MASP converts are present.");
-
-                indexed_converts
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, (pos, convert))| {
-                        let (zkproof, cv) = prover
-                            .convert_proof(
-                                ctx,
-                                convert.allowed.clone(),
-                                convert.value,
-                                anchor,
-                                convert.merkle_path,
-                            )
-                            .map_err(|_| Error::ConvertProof)?;
-
-                        // Record the post-randomized spend location
-                        tx_metadata.convert_indices[pos] = i;
-
-                        // Update progress and send a notification on the channel
-                        progress += 1;
-                        if let Some(sender) = progress_notifier {
-                            // If the send fails, we should ignore the error, not crash.
-                            sender
-                                .send(Progress::new(progress, Some(total_progress)))
-                                .unwrap_or(());
-                        }
-
-                        Ok(ConvertDescription {
-                            cv,
-                            anchor,
-                            zkproof,
-                        })
-                    })
-                    .collect::<Result<Vec<_>, Error>>()?
-            } else {
-                vec![]
-            };
-        // Create Sapling OutputDescriptions
-        let shielded_outputs: Vec<OutputDescription<GrothProofBytes>> = indexed_outputs
-            .into_iter()
-            .enumerate()
-            .map(|(i, output)| {
-                let result = if let Some((pos, output)) = output {
-                    // Record the post-randomized output location
-                    tx_metadata.output_indices[pos] = i;
-
-                    output.clone().build::<P, _, _>(prover, ctx, &mut rng)
-                } else {
-                    // This is a dummy output
-                    let (dummy_to, dummy_note) = {
-                        let (diversifier, g_d) = {
-                            let mut diversifier;
-                            let g_d;
-                            loop {
-                                let mut d = [0; 11];
-                                rng.fill_bytes(&mut d);
-                                diversifier = Diversifier(d);
-                                if let Some(val) = diversifier.g_d() {
-                                    g_d = val;
-                                    break;
-                                }
-                            }
-                            (diversifier, g_d)
-                        };
-                        let (pk_d, payment_address) = loop {
-                            let dummy_ivk = jubjub::Fr::random(&mut rng);
-                            let pk_d = g_d * dummy_ivk;
-                            if let Some(addr) = PaymentAddress::from_parts(diversifier, pk_d) {
-                                break (pk_d, addr);
-                            }
-                        };
-
-                        let rseed =
-                            generate_random_rseed_internal(&params, target_height, &mut rng);
-
-                        (
-                            payment_address,
-                            Note {
-                                g_d,
-                                pk_d,
-                                rseed,
-                                value: 0,
-                                asset_type: AssetType::new(b"dummy").unwrap(),
-                            },
-                        )
-                    };
-
-                    let esk = dummy_note.generate_or_derive_esk_internal(&mut rng);
-                    let epk = dummy_note.g_d * esk;
-
-                    let (zkproof, cv) = prover.output_proof(
-                        ctx,
-                        esk,
-                        dummy_to,
-                        dummy_note.rcm(),
-                        dummy_note.asset_type,
-                        dummy_note.value,
-                    );
-
-                    let cmu = dummy_note.cmu();
-
-                    let mut enc_ciphertext = [0u8; 580 + 32];
-                    let mut out_ciphertext = [0u8; 80];
-                    rng.fill_bytes(&mut enc_ciphertext[..]);
-                    rng.fill_bytes(&mut out_ciphertext[..]);
-
-                    OutputDescription {
-                        cv,
-                        cmu,
-                        ephemeral_key: epk.to_bytes().into(),
-                        enc_ciphertext,
-                        out_ciphertext,
-                        zkproof,
-                    }
-                };
-
-                // Update progress and send a notification on the channel
-                progress += 1;
-                if let Some(sender) = progress_notifier {
-                    // If the send fails, we should ignore the error, not crash.
-                    sender
-                        .send(Progress::new(progress, Some(total_progress)))
-                        .unwrap_or(());
-                }
-
-                result
-            })
-            .collect();
-
-        let bundle = if shielded_spends.is_empty() && shielded_outputs.is_empty() {
+        let bundle = if self.spends.is_empty() && self.outputs.is_empty() {
             None
         } else {
             Some(Bundle {
-                shielded_spends,
-                shielded_converts,
-                shielded_outputs,
+                shielded_spends: self.spends,
+                shielded_converts: self.converts,
+                shielded_outputs: self.outputs,
                 value_balance,
-                authorization: Unauthorized { tx_metadata },
+                authorization: MASPUnauthorized { tx_metadata },
             })
         };
 
         Ok(bundle)
     }
-    */
+
 }
