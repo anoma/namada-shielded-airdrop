@@ -22,6 +22,7 @@ mod sapling_spend;
 mod MASP_output;
 mod builder;
 mod verifier;
+mod bundle;
 
 fn main() {
     let mut rng_sap = XorShiftRng::from_seed([
