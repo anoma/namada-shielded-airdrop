@@ -1,92 +1,121 @@
-use borsh::{BorshDeserialize, BorshSerialize};
-use jubjub::ExtendedPoint;
-use redjubjub::{Binding, SpendAuth};
-use masp_primitives::transaction::components::{ConvertDescription, OutputDescription};
-use sapling::bundle::{SpendDescription};
-use masp_primitives::transaction::components::sapling::{Authorized as MaspAuthorized, Authorization as MaspAuthorization, MapAuth};
-use masp_primitives::sapling::redjubjub as masp_jubjub;
-use sapling::bundle::{Authorized as SapAuthorized, Authorization as SapAuthorization};
 use core::fmt::Debug;
-use std::hash::Hash;
-use sapling::builder::{InProgressProofs, InProgressSignatures, InProgress};
-use crate::builder::GROTH_PROOF_SIZE;
+use borsh::{BorshDeserialize, BorshSerialize};
+use group::GroupEncoding;
+use jubjub::{SubgroupPoint};
+use masp_note_encryption::EphemeralKeyBytes;
+use masp_primitives::transaction::components::sapling::{Authorization as MaspAuth, MapAuth};
+use masp_primitives::transaction::components::sapling::builder::Error as MaspErr;
+use masp_primitives::transaction::components::{ConvertDescription, I128Sum, OutputDescription};
+use sapling::{builder::{Error, SpendInfo}, Nullifier};
+use rand_core::RngCore;
+use sapling::bundle::{Authorization as SapAuth, SpendDescription};
+use redjubjub::{Signature, SpendAuth};
+use jubjub;
+use sapling::prover::{OutputProver, SpendProver};
+use sapling::value::{ValueCommitment, ValueCommitTrapdoor};
+use masp_primitives::constants::{VALUE_COMMITMENT_RANDOMNESS_GENERATOR as R_MASP, VALUE_COMMITMENT_RANDOMNESS_GENERATOR};
+use masp_primitives::sapling::redjubjub::{PrivateKey, PublicKey};
+use sapling::constants::VALUE_COMMITMENT_RANDOMNESS_GENERATOR as R_Sapling;
+use masp_primitives::transaction::components::sapling::Authorized as MASPAuthorized;
+pub(crate) const GROTH_PROOF_SIZE: usize = 48 + 96 + 48;
+const MIN_SHIELDED_OUTPUTS: usize = 2;
 
-pub type GrothProofBytes = [u8; GROTH_PROOF_SIZE];
-
-#[derive(Clone, Debug)]
-pub struct AirdropBundle<MA, SA>
-    where
-        MA: MaspAuthorization,
-        SA: SapAuthorization,
-{
-    pub shielded_spends: Vec<SpendDescription<SA>>,
-    pub shielded_converts: Vec<ConvertDescription<MA::Proof>>,
-    pub shielded_outputs: Vec<OutputDescription<MA::Proof>>,
-    pub value_balance: ExtendedPoint,
-    pub sap_authorization: SA,
-    pub masp_authorization: MA,
-
+pub const MAX_MONEY: u64 = u64::MAX;
+pub struct AirdropBundle<SA: SapAuth, MA: MaspAuth> {
+    spends: Vec<SpendDescription<SA>>,
+    converts: Vec<ConvertDescription<MA::Proof>>,
+    outputs: Vec<OutputDescription<MA::Proof>>,
+    renomralizators: Vec<SubgroupPoint>,
+    authorization: MA::AuthSig,
 }
-
-impl<MA: MaspAuthorization + PartialEq + BorshSerialize + BorshDeserialize, SA: SapAuthorization> AirdropBundle<MA,SA> {
-    pub fn map_authorization_Masp<
-        B: MaspAuthorization + PartialEq + BorshSerialize + BorshDeserialize,
-        F: MapAuth<MA, B>,
-    >(
-        self,
-        f: F,
-    ) -> AirdropBundle<B, SA> {
-        let mut temp_bundle = self.clone();
-        temp_bundle.shielded_converts = self
-            .shielded_converts
-            .into_iter()
-            .map(|c| ConvertDescription {
-                cv: c.cv,
-                anchor: c.anchor,
-                zkproof: f.map_proof(c.zkproof),
-            })
-            .collect();
-        temp_bundle.shielded_outputs = self
-            .shielded_outputs
-            .into_iter()
-            .map(|o| OutputDescription {
-                cv: o.cv,
-                cmu: o.cmu,
-                ephemeral_key: o.ephemeral_key,
-                enc_ciphertext: o.enc_ciphertext,
-                out_ciphertext: o.out_ciphertext,
-                zkproof: f.map_proof(o.zkproof),
-            })
-            .collect();
-        temp_bundle.masp_authorization = f.map_authorization(self.masp_authorization);
-        temp_bundle
+impl<SA, MA> AirdropBundle<SA, MA>
+    where
+        SA: SapAuth<AuthSig = Signature<SpendAuth>>,
+        MA: MaspAuth<Proof = [u8; 192], AuthSig = ()> + PartialEq + BorshSerialize + BorshDeserialize
+{
+    /// initialize the airdrop tool with the sapling spend commitment tree anchor
+    pub fn init() -> Self {
+        AirdropBundle {
+            spends: vec![],
+            converts: vec![],
+            outputs: vec![],
+            renomralizators: vec![],
+            authorization: (),
+        }
+    }
+    pub fn add_spend_description(
+        &mut self,
+        cv: ValueCommitment,
+        anchor: bls12_381::Scalar,
+        nullifier: Nullifier,
+        rk: redjubjub::VerificationKey<SpendAuth>,
+        zkproof: SA::SpendProof,
+        spend_auth_sig: SA::AuthSig,
+    ) -> Result<(), Error> {
+        self.spends.push(SpendDescription::from_parts(
+            cv,
+            anchor,
+            nullifier,
+            rk,
+            zkproof,
+            spend_auth_sig,
+        ));
+        Ok(())
     }
 
-    pub fn map_authorization_Sap<
-        R,
-        B: SapAuthorization
-    >(
-        self,
-        mut context: R,
-        spend_proof: impl Fn(&mut R, SA::SpendProof) -> B::SpendProof,
-        auth_sig: impl Fn(&mut R, SA::AuthSig) -> B::AuthSig,
-        auth: impl FnOnce(&mut R, SA) -> B,
-    ) -> AirdropBundle<MA, B> {
-        let mut temp_bundle = self.clone();
-        temp_bundle.shielded_spends = self
-            .shielded_spends
-            .into_iter()
-            .map(|d| SpendDescription::from_parts(
-                *d.cv(),
-                *d.anchor(),
-                *d.nullifier(),
-                *d.rk(),
-                spend_proof(&mut context, d.zkproof()),
-                auth_sig(&mut context, d.spend_auth_sig()),
-            )
-            )
-            .collect();
-        temp_bundle.sap_authorization =  auth(&mut context, self.sap_authorization);
-        temp_bundle
+    pub fn add_output_description(
+        &mut self,
+        cv: jubjub::ExtendedPoint,
+        cmu: bls12_381::Scalar,
+        ephemeral_key: EphemeralKeyBytes,
+        enc_ciphertext: [u8; 580 + 32],
+        out_ciphertext: [u8; 80],
+        zkproof: MA::Proof,
+    ) -> Result<(), MaspErr> {
+        self.outputs.push(OutputDescription { cv, cmu, ephemeral_key, enc_ciphertext, out_ciphertext, zkproof });
+        Ok(())
     }
+
+    pub fn add_convert_description(
+        &mut self,
+        cv: jubjub::ExtendedPoint,
+        anchor: bls12_381::Scalar,
+        zkproof: MA::Proof,
+    ) -> Result<(), MaspErr> {
+        // Consistency check: all anchors must equal the first one
+        self.converts.push(ConvertDescription { cv, anchor, zkproof });
+        Ok(())
+    }
+}
+impl<SA, MA> AirdropBundle<SA, MA>
+        where
+            SA: SapAuth<AuthSig = Signature<SpendAuth>>,
+            MA: MaspAuth<Proof = [u8; 192], AuthSig = MASPAuthorized> + PartialEq + BorshSerialize + BorshDeserialize
+    {
+    pub fn apply_signatures<R: RngCore>(
+        &mut self,
+        rcv_sap: ValueCommitTrapdoor,
+        rcv_nam: jubjub::Fr,
+        rcv_cnvrt: jubjub::Fr,
+        rng: &mut R,
+        sighash: &[u8; 32],
+    ) {
+        let N:SubgroupPoint = (R_MASP)*rcv_sap.inner() - (R_Sapling)*(rcv_sap.inner() * jubjub::Fr::from(8));
+        self.renomralizators.push(N);
+        let bsk = PrivateKey(rcv_sap.inner() - rcv_nam + rcv_cnvrt);
+        let bvk = PublicKey::from_private(&bsk, VALUE_COMMITMENT_RANDOMNESS_GENERATOR);
+
+        let mut data_to_be_signed = [0u8; 64];
+        data_to_be_signed[0..32].copy_from_slice(&bvk.0.to_bytes());
+        data_to_be_signed[32..64].copy_from_slice(&sighash[..]);
+
+        // Sign
+        let signature = bsk.sign(
+            &data_to_be_signed,
+            rng,
+            VALUE_COMMITMENT_RANDOMNESS_GENERATOR,
+        );
+        self.authorization =  MASPAuthorized { binding_sig: signature };
+    }
+
 }

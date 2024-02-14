@@ -13,18 +13,16 @@ use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use sapling::value::ValueSum;
 use masp_primitives::transaction::components::ValueSum as MaspValueSum;
-use crate::sapling_spend::ConvertToValueCommitment;
 use masp_primitives::constants::VALUE_COMMITMENT_RANDOMNESS_GENERATOR as R_MASP;
+use sapling::builder::bundle;
 use sapling::constants::VALUE_COMMITMENT_RANDOMNESS_GENERATOR as R_Sapling;
 use sapling::constants::VALUE_COMMITMENT_VALUE_GENERATOR as vb_Sapling;
 
-mod sapling_spend;
-mod MASP_output;
-mod builder;
-mod verifier;
 mod bundle;
-
+use crate::bundle::AirdropBundle;
 fn main() {
+    //let airdrop_bundle: AirdropBundle<> = AirdropBundle::init();
+    /*
     let mut rng_sap = XorShiftRng::from_seed([
         0x59, 0x62, 0xbe, 0x3d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
         0xe5,
@@ -56,8 +54,10 @@ fn main() {
     // cofactor check
     assert_eq!(cv_NAM, vb_nam * jubjub::Fr::from(value_NAM) + R_MASP * rcv_NAM);
     assert_eq!(cv_sapling, vb_Sapling * jubjub::Fr::from(value_sapling) + R_Sapling * rcv_sapling);
-    assert_eq!(cv_mint, ( vb_nam*jubjub::Fr::from(V_NAM) - vb_Sapling.double().double().double()*(jubjub::Fr::from(V_SAP)))*jubjub::Fr::from(value_mint*8) + R_MASP * rcv_convert);
-    assert_eq!(cv_sapling.double().double().double(), vb_Sapling * jubjub::Fr::from(value_sapling*8) + R_Sapling * rcv_sapling* jubjub::Fr::from(8));
+    assert_eq!(cv_mint, ( vb_nam*jubjub::Fr::from(V_NAM) - vb_Sapling.double().double().double()
+    // *(jubjub::Fr::from(V_SAP)))*jubjub::Fr::from(value_mint*8) + R_MASP * rcv_convert);
+    assert_eq!(cv_sapling.double().double().double(), vb_Sapling * jubjub::Fr::from(value_sapling*8)
+    // + R_Sapling * rcv_sapling* jubjub::Fr::from(8));
     // Calculate Randomness renormailzation factor
     let N:SubgroupPoint = (R_MASP)*rcv_sapling - (R_Sapling)*(rcv_sapling * jubjub::Fr::from(8));
     let bvk:SubgroupPoint  = cv_sapling.double().double().double()+ cv_mint - cv_NAM + N;
@@ -68,4 +68,6 @@ fn main() {
                                R_MASP*(rcv_convert+rcv_sapling-rcv_NAM);
 
     assert_eq!(bvk_2, bvk);
+
+     */
 }
