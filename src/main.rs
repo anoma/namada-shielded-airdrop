@@ -17,17 +17,18 @@ use masp_primitives::constants::VALUE_COMMITMENT_RANDOMNESS_GENERATOR as R_MASP;
 use sapling::builder::bundle;
 use sapling::constants::VALUE_COMMITMENT_RANDOMNESS_GENERATOR as R_Sapling;
 use sapling::constants::VALUE_COMMITMENT_VALUE_GENERATOR as vb_Sapling;
+use sapling::bundle::GrothProofBytes;
+use masp_primitives::transaction::components::sapling::{Authorization as MaspAuth, MapAuth};
 
 mod bundle;
 use crate::bundle::AirdropBundle;
 fn main() {
-    //let airdrop_bundle: AirdropBundle<> = AirdropBundle::init();
-    /*
+    let airdrop_bundle: &AirdropBundle<dyn MaspAuth<Proof=GrothProofBytes, AuthSig=()>> = &AirdropBundle::init();    /*
     let mut rng_sap = XorShiftRng::from_seed([
         0x59, 0x62, 0xbe, 0x3d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
         0xe5,
     ]);
-    let mut rng_masp = XorShiftRng::from_seed([
+    let mut rng_masp = XorShiftRng::from_seed([.
         0x00, 0x62, 0xbe, 0x3d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
         0xe5,
     ]);

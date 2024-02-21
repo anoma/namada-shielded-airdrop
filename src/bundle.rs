@@ -8,7 +8,7 @@ use masp_primitives::transaction::components::sapling::builder::Error as MaspErr
 use masp_primitives::transaction::components::{ConvertDescription, I128Sum, OutputDescription};
 use sapling::{builder::{Error, SpendInfo}, Nullifier};
 use rand_core::RngCore;
-use sapling::bundle::{Authorization as SapAuth, SpendDescription};
+use sapling::bundle::{Authorization, Authorized, SpendDescription};
 use redjubjub::{Signature, SpendAuth};
 use jubjub;
 use sapling::prover::{OutputProver, SpendProver};
@@ -17,21 +17,23 @@ use masp_primitives::constants::{VALUE_COMMITMENT_RANDOMNESS_GENERATOR as R_MASP
 use masp_primitives::sapling::redjubjub::{PrivateKey, PublicKey};
 use sapling::constants::VALUE_COMMITMENT_RANDOMNESS_GENERATOR as R_Sapling;
 use masp_primitives::transaction::components::sapling::Authorized as MASPAuthorized;
+use sapling::bundle::GrothProofBytes;
 pub(crate) const GROTH_PROOF_SIZE: usize = 48 + 96 + 48;
 const MIN_SHIELDED_OUTPUTS: usize = 2;
 
 pub const MAX_MONEY: u64 = u64::MAX;
-pub struct AirdropBundle<SA: SapAuth, MA: MaspAuth> {
-    spends: Vec<SpendDescription<SA>>,
-    converts: Vec<ConvertDescription<MA::Proof>>,
-    outputs: Vec<OutputDescription<MA::Proof>>,
+#[derive(Clone, Debug)]
+pub struct AirdropBundle<MA: MaspAuth+ PartialEq + BorshSerialize + BorshDeserialize> {
+    spends: Vec<SpendDescription<Authorized>>,
+    converts: Vec<ConvertDescription<GrothProofBytes>>,
+    outputs: Vec<OutputDescription<GrothProofBytes>>,
     renomralizators: Vec<SubgroupPoint>,
     authorization: MA::AuthSig,
 }
-impl<SA, MA> AirdropBundle<SA, MA>
+
+impl<MA> AirdropBundle<MA>
     where
-        SA: SapAuth<AuthSig = Signature<SpendAuth>>,
-        MA: MaspAuth<Proof = [u8; 192], AuthSig = ()> + PartialEq + BorshSerialize + BorshDeserialize
+        MA: MaspAuth<Proof = GrothProofBytes, AuthSig = ()> + std::cmp::PartialEq + borsh::BorshSerialize + borsh::BorshDeserialize
 {
     /// initialize the airdrop tool with the sapling spend commitment tree anchor
     pub fn init() -> Self {
@@ -49,8 +51,8 @@ impl<SA, MA> AirdropBundle<SA, MA>
         anchor: bls12_381::Scalar,
         nullifier: Nullifier,
         rk: redjubjub::VerificationKey<SpendAuth>,
-        zkproof: SA::SpendProof,
-        spend_auth_sig: SA::AuthSig,
+        zkproof: GrothProofBytes,
+        spend_auth_sig: redjubjub::Signature<SpendAuth>,
     ) -> Result<(), Error> {
         self.spends.push(SpendDescription::from_parts(
             cv,
@@ -70,7 +72,7 @@ impl<SA, MA> AirdropBundle<SA, MA>
         ephemeral_key: EphemeralKeyBytes,
         enc_ciphertext: [u8; 580 + 32],
         out_ciphertext: [u8; 80],
-        zkproof: MA::Proof,
+        zkproof: GrothProofBytes,
     ) -> Result<(), MaspErr> {
         self.outputs.push(OutputDescription { cv, cmu, ephemeral_key, enc_ciphertext, out_ciphertext, zkproof });
         Ok(())
@@ -80,17 +82,16 @@ impl<SA, MA> AirdropBundle<SA, MA>
         &mut self,
         cv: jubjub::ExtendedPoint,
         anchor: bls12_381::Scalar,
-        zkproof: MA::Proof,
+        zkproof: [u8; GROTH_PROOF_SIZE],
     ) -> Result<(), MaspErr> {
         // Consistency check: all anchors must equal the first one
         self.converts.push(ConvertDescription { cv, anchor, zkproof });
         Ok(())
     }
 }
-impl<SA, MA> AirdropBundle<SA, MA>
+impl<MA> AirdropBundle<MA>
         where
-            SA: SapAuth<AuthSig = Signature<SpendAuth>>,
-            MA: MaspAuth<Proof = [u8; 192], AuthSig = MASPAuthorized> + PartialEq + BorshSerialize + BorshDeserialize
+            MA: MaspAuth<Proof = GrothProofBytes, AuthSig = MASPAuthorized> + std::cmp::PartialEq + borsh::BorshSerialize + borsh::BorshDeserialize
     {
     pub fn apply_signatures<R: RngCore>(
         &mut self,
