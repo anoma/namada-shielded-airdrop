@@ -10,6 +10,7 @@ masp_primitives = { git = "https://github.com/anoma/masp", branch = "carlo/airdr
 masp_proofs = { git = "https://github.com/anoma/masp", branch = "carlo/airdrop_changes", default-features = false, features = ["local-prover"] }
 masp_note_encryption =  { git = "https://github.com/anoma/masp", branch = "carlo/airdrop_changes" }
 sapling = { package = "sapling-crypto", git = "https://github.com/zcash/sapling-crypto.git", rev = "71711b9e4b775a625318070e0f56b7b652f12306" }
+zcash_primitives = "0.13.0"
 borsh = {version = "1.2.0", features = ["unstable__schema", "derive"]}
 
 ff = "0.13"
