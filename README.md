@@ -70,24 +70,4 @@ Similarly to the Sapling design, a binding signature here proves knowledge of th
 ## Conclusions 
 Thanks to the flexibility that comes from the usage of  the convert circuit, this protocol guarantees a shielded reward which never requires sharing secret keys to external tools. At the cost of needing some degree of involvement from the user. The main novelty in the transaction construction is the presence of the Randomness renormalization factor. 
 
-We have a GitHub repo doing a proof-of-concept check of the transaction validity check described above here [Insert actual github repo].
-
-
-----
-Come to the **M**ulti **A**sset side! It's **S**hielded! Convert assets types in a **P**ull!
-
-I have opted to not include the following sections in the zcash post
-
-## Alternative designs
-We could have different assumpionts for alternative designs. For instance, not collaborate with a Zcash wallet, and create an airdrop tool that handles the creation of the _Sapling Spend Description_. This would entail having users trust the airdrop tool, and insert their secert informations. The amount of infromation to put in can vary. Together with their secert keys, users could input in the airdorp tool the transactions that resulted with them owning the notes they want to use for the claim, and their _Full Viewing Key_. Alternativley the could insert their _Incoming Viewing Key_, and then the airdrop tool would perform a whole blockchain scan to recover the user encrypted notes.
-Moreover, this same design described here can be changed moving computational burnden from the Zcash wallet into the Namada one, by having the zcash wallet compute only a minum part of the _spend statment_ proofs, and comunicating to the Namada wallet the information necessary to complete the _spend statement_ proofs. For instance, an alternative design could avoid the zcash wallet to store the note commitment tree and nullifier set at the snapshot moment. 
-
-
-### Communication channel between Zcash Wallet and Namada Wallet 
-Envisioning a collaborative effort between Zcash Wallet and Namada wallet, we define a communication channel between the two entities. Abstracting away from what the de facto channel would be, we can specify a channel that would support a _key agree scheme_ $\mathsf{KA}$. In a key agreement two parties agree on a shared secret, using their _private key_ and other party's _public key_. The shared secret is created as a result of the $\mathsf{KA}$ scheme, and it is derived using an _ephemeral key_. The zcash wallet needs to communicate to the MASP shielded address the _secret_ needed to sign the transaction. The Zcash wallet needs to comunicate to the MASP Shielded Address the following values:
-* $\mathsf{v^{Sapling}}$, value of the note they want to convert
-* $\mathsf{rcv^{Sapling}}$, randomness for the Sapling value commitment
-
-The first is needed by the MASP shieled address to compute the value of NAM that can make a balanced transaction. The latter is needed for signing so it can be validated. We define:
-We define $\mathsf{sp = (v^{Sapling}, rcv^{Sapling})}$, and let $\mathsf{S^{enc}}$ be the raw encoding of $\mathsf{sp}$. Using $\mathsf{KA}$ and the _ephemeral key_, the encryption/decryption of $\mathsf{sp}$ is done similarly how it's done Sapling Documentation. 
-Differnt ways of creating a trusted channel can be explored; only sharing $\mathsf{sp}$ avoids the zcash wallet to share their notes to the Namada wallet.
+This GitHub repo shows a proof-of-concept transaction validity check described above.
