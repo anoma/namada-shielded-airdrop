@@ -1,19 +1,19 @@
 # A protocol to Air-drop shielded Namada native token to Zcash Shielded Assets holders
 
 ### Recap of the shielded-airdrop goal
-Both Zcash and Namada are chains that allow shielded transactions using a shielded pool. Zcash comes with multiple pools, that differ in technical implementation but share the same privacy goal. Namada comes with a pool (called Multi Asset Shielded Pool, or MASP in short) which, in a nutshell, generalizes Zcash's pool design allowing assets of different nature to coexist and be traded within the same pool. 
-Here I am going to introduce a protocol that targets those who have a wallet with a shielded Sapling address holding shielded zcash assets (ZSA). The invitation for them is to open a Namada wallet: so that following a few steps, they can end up with an airdrop reward in Namada native token (NAM) directly in their Namada shielded address.
+Both Zcash and Namada are chains that allow shielded transactions using a shielded pool. Zcash comes with multiple pools, that differ in technical implementation but share the same privacy goal. Namada comes with a pool (called Multi Asset Shielded Pool, or MASP in short) which, in a nutshell, generalizes Zcash's pool design allowing assets of different nature to coexist and be transferred within the same pool. 
+Here I am going to introduce a protocol that targets those who have a wallet with a shielded Sapling address holding shielded zcash assets. The invitation for them is to open a Namada wallet: so that following a few steps, they can end up with an airdrop reward in Namada native token (NAM) directly in their Namada shielded address.
 The protocol design guarantees that the amount of assets held in shielded zcash, and amount of the reward claimed _remain shielded_ during the entire process: what was shielded never gets revealed. 
-The only additional requirement for the actor holding shielded ZSA, is that assets has to be in their wallet prior a fixed moment in time, which we refer to as the snapshot block height. 
-The airdrop protocol gives a reward linear in the amount of ZSA that gets involved in the process. So the more ZSA gets used, the higher the NAM reward.
-The protocol design envisions a collaboration with Zcash wallets which support a "claim shielded NAM" feature. Users would insert their Namada Shielded Address in to the Zcash wallet extension together with information about the assets ZSA they want to use for the airdrop, and this would allow them to claim the airdrop reward from their Namada wallet. This approach reduces the trust requirements that Zcash user have towards the Namada developed airdrop tool, as they would not have to input their secret keys in a new tool; keeping the protocol compliant to principles of least authority.
+The only additional requirement for the actor holding shielded ZEC, is that assets has to be in their wallet prior to a fixed moment in time, which we refer to as the snapshot block height. 
+The airdrop protocol gives a reward linear in the amount of ZEC that gets involved in the process. So the more ZEC gets used, the higher the NAM reward.
+The protocol design envisions a collaboration with Zcash wallets which support a "claim shielded NAM" feature. Users would insert their Namada Shielded Address in to the Zcash wallet extension together with information about the ZEC they want to use for the airdrop, and this would allow them to claim the airdrop reward from their Namada wallet. This approach reduces the trust requirements that Zcash user have towards the Namada developed airdrop tool, as they would not have to input their secret keys in a new tool; keeping the protocol compliant to principles of least authority.
 
 It should be noted that even if the transaction that gives the airdrop reward is shielded, it still will be possible to differentiate it from other shielded transactions going around the pool. This has the positive side effect to easily allow us (airdrop designers) to put a time limit for claiming the airdrop.
 
 ## Transaction between Zcash Sapling and Namada MASP
 The MASP has a built-in feature that allows a burn-and-mint like process to convert a shielded asset of a given type, to an asset of different type. This is achieved using a _Convert description_ that through a fixed (as in: decided by the governance of the Namada chain) convert ratio, effectively transforms MASP notes into new ones of different type. We can use the same design for a shielded airdrop between Zcash and Namada: transforming a zcash note into a MASP one. This transformation is possible since MASP notes can be interpreted as a generalization of Sapling note, or equivalently a Sapling note can be interpreted as a MASP note of fixed type.
 ### Set up
-The MASP is implemented as a Validity Predicate in Namada, and as a consequence it has its own Namada address. To set up the protocol, we store within the MASP address the Sapling commitment tree at the snapshot block height as well as the related nullifier set at that moment. Similarly, we store in the Zcash wallet the note commitment tree and nullifier set at the snapshot moment. We should distinguish which notes in the commitment tree have been nullified; we can do this dynamically as ZSA are used to claim NAM. We assume having in the MASP address and the Zcash wallet:
+The MASP is implemented as a Validity Predicate in Namada, and as a consequence it has its own Namada address. To set up the protocol, we store within the MASP address and the zcash wallet the Sapling commitment tree at the snapshot block height as well as the related nullifier set at that moment. We should distinguish which notes in the commitment tree have been nullified; we can do this dynamically as ZEC are used to claim NAM. We assume having in the MASP address and the Zcash wallet:
 * $\mathsf{NoteCommit^{Sapling}}$: the note commitment tree. We refer to the root $\mathsf{rt^{Sapling}}$ of this commitment tree as the _anchor_.
 * $\mathsf{nf^{Sapling}}$: the nullifier set  associated with $\mathsf{NoteCommit^{Sapling}}$ at that height.
 
@@ -44,12 +44,12 @@ We call $\mathsf{vb^{NAM}}$ the asset generator for the NAM reward, and we use t
 $vb^{mint} = [V_{NAM}]vb^{NAM}+[V_{Sapling}]vb^{Sapling}$
 
 We define:
-$\mathcal{R}^{\mathsf{Sapling}} = \mathsf{FindGroupHash^{ \mathbb{J}^{(r)* } }(''Zcash\_cv'', ''r'')}$
-$\mathcal{R}^{\mathsf{MASP}} = \mathsf{FindGroupHash^{ \mathbb{J}^{ (r)* }}(''MASP\_\_r\_'', ''r'')}$
+```
+$\mathcal{R}^{\mathsf{Sapling}} = \mathsf{FindGroupHash^{\mathbb{J}^{(r)*}}(''Zcash\_cv'', ''r'')}$
+$\mathcal{R}^{\mathsf{MASP}} = \mathsf{FindGroupHash^{\mathbb{J}^{(r)*}}(''MASP\_\_r\_'', ''r'')}$
 $\mathsf{cv^{NAM} = [v^{NAM}h_{\mathbb{J}}]vb^{NAM} +[rcv^{NAM}]}\mathcal{R}^{\mathsf{MASP}}$
 $\mathsf{cv^{mint} = [v^{mint}h_{\mathbb{J}}]vb^{mint} +[rcv^{mint}]}\mathcal{R}^{\mathsf{MASP}}$
-
-
+```
 The transaction build for the Airdrop would be made of:
 1. Sapling Spend description
 2. MASP Output description 
