@@ -46,10 +46,11 @@ $vb^{mint} = [V_{NAM}]vb^{NAM}+[V_{Sapling}]vb^{Sapling}$
 
 We define:
 
-- $\mathcal{R}^{\mathsf{Sapling}} = \mathsf{FindGroupHash^{\mathbb{J}^{(r)*}}(''Zcash\_cv'', ''r'')}$
-- $\mathcal{R}^{\mathsf{MASP}} = \mathsf{FindGroupHash^{\mathbb{J}^{(r)*}}(''MASP\_\_r\_'', ''r'')}$
+- $\mathcal{R}^{\mathsf{Sapling}} = \mathsf{FindGroupHash^{\mathbb{J}^{(r)*}}(''{Zcash\\_cv}'', ''r'')}$
+- $\mathcal{R}^{\mathsf{MASP}} = \mathsf{FindGroupHash^{\mathbb{J}^{(r)*}}(''{MASP\\_r\\\_\\\_}'', ''r'')}$
 - $\mathsf{cv^{NAM} = [v^{NAM}h_{\mathbb{J}}]vb^{NAM} +[rcv^{NAM}]}\mathcal{R}^{\mathsf{MASP}}$
 - $\mathsf{cv^{mint} = [v^{mint}h_{\mathbb{J}}]vb^{mint} +[rcv^{mint}]}\mathcal{R}^{\mathsf{MASP}}$
+
 
 The transaction build for the Airdrop would be made of:
 1. Sapling Spend description
