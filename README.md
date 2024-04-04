@@ -71,3 +71,11 @@ Similarly to the Sapling design, a binding signature here proves knowledge of th
 Thanks to the flexibility that comes from the usage of  the convert circuit, this protocol guarantees a shielded reward which never requires sharing secret keys to external tools. At the cost of needing some degree of involvement from the user. The main novelty in the transaction construction is the presence of the Randomness renormalization factor. 
 
 This GitHub repo shows a proof-of-concept transaction validity check described above.
+
+----
+
+To run the demo:
+```
+cargo test
+```
+This runs two test, one where there is a valid signature for the airdrop transaction (the amount of ZEC and NAM match) and one where the transaction is not balanced
