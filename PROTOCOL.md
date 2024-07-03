@@ -32,7 +32,7 @@ As we are within a Zcash wallet, all the information needed for creating $\maths
 The Namada wallet will:
 1. verify the validity of the _Spend Statement_. The verification of a Sapling _Spend Statement_ differs slightly from the verification of MASP _spend circuit_, so the MASP VP would have implemented inside a Sapling verifier.
 2. checks if the root referred to in $\mathsf{\pi^{Sapling}_ZKSpend}$ corresponds to the root it stores. 
-3. Check if the nullifier for the spend note is already present in the nullifier set. If present, it gets added to the set; if missing, the airdrop protocol is aborted.
+3. Check if the nullifier for the spend note is already present in the nullifier set. If missing, it gets added to the set; if present, the airdrop protocol is aborted.
 5. Creates an Airdrop Transaction as described in the following paragraph.
 
 ### Building the Airdrop Transaction validity
